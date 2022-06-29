@@ -1,0 +1,94 @@
+---
+title: "Tsai_Yunyu_HW3"
+output:
+  word_document: default
+  html_document: default
+date: '2022-05-03'
+---
+1. Interest lies in how a mothers age at delivery is associated with her baby’s birthweight (in grams). MID in the dataset stands for Mothers ID.
+```{r}
+library(nlme)
+birthwt = read.table("/Users/tsaiyunyu/Desktop/STATS_203/birthwt-data.txt", header=FALSE)
+names(birthwt) = c("MID", "Order", "Wt", "Age", "CID")
+```
+a. Fit a mixed effect linear model with Age as the only predictor and a random intercept for each MID. Report the output from R.
+```{r}
+mod = lme(Wt ~ 1 + Age, random = ~1 | MID, data=birthwt, method="ML")
+summary(mod)
+```
+b. Write out the model you are trying to estimate in part a. and interpret the estimated coefficient on Age. What is the estimate of $σ_ε$ (the estimated standard deviation of the errors).
+**answer** $E(\hat Y_{ij}) = 17.1431\hat {Age_{ij}}+2785.1495+b_{0i}$ 
+When mother's age increases by 1 year old, the baby’s birthweight may approximately increase by 17.1431 grams.
+the estimate of $σ_ε$ is 434.1899
+c. Now fit a model with just a random intercept (no Age predictor). Should Age be dropped from the model in part a.? Conduct a formal test using likelihood ratio test (assume a 5% significance level).
+**answer** $H_0:\beta_1 =0$, $H_a:\beta_1 \neq 0$
+Due to the p-value <.0001, we reject $H_0$ and have evidence that $H_a$ is true. Age should not be dropped from the model in part a. because the p-value and the value of AIC all show that we need to retain the full model.
+```{r}
+mod0 = lme( Wt ~ 1, random = ~1 | MID, data=birthwt, method="ML")
+summary(mod0)
+anova(mod0, mod)
+```
+d. Now fit a model with Age as predictor, and a random intercept and random slope. Report the output from R.
+```{r}
+mod1 = lme(Wt ~ 1 + Age, random = ~1+Age | MID, data=birthwt, method="ML")
+summary(mod1)
+```
+e. From the model in part d., write out the estimated equation for MID=80 (first mother in dataset).
+**answer** $E(\hat Y_i|MID=80)=15.9444Age_i+2805.7881+37.64285857Age_{b_i}+2679.772_{b_{0i}}$
+```{r}
+coef(mod1)
+```
+f. In the model from part d., is a random slope and intercept necessary? Or will a random intercept suffice? Compare these two models and make a conclusion.
+**answer** $H_O: M_{reduced}$, $H_a: M_{full}$
+Due to the p-value<.0001 and the value of AIC, random slope and intercept are necessary.
+```{r}
+mod1.reml = lme(Wt ~ 1 + Age, random = ~1+Age | MID, data=birthwt, method="REML")
+mod.reml = lme(Wt ~ 1 + Age, random = ~1 | MID, data=birthwt, method="REML")
+anova(mod.reml, mod1.reml)
+```
+2. A study is conducted among federally funded high schools. The response variable is MathAch (math achievement score where higher scores are better) and recorded predictor variables are Sex (Female or Male), and SES (Socioeconomic status). This is an example of clustered data where we assume measurements may be correlated within a school (so School takes the place of the “individual" in longitudinal data).
+Explain why a compound symmetry structure for the variance-covariance of measurements within a school is a reasonable assumption.
+**answer** Students in the same school accept similar education, even if the sex and socioeconomic status are different with each observation, each student has a similar math achievement score. Thus, each student's math score has the same correlation regardless of the different students between measurements.
+3. In this problem, using the linear mixed effects model, we will include all the available measurements (will not need to use only the complete data observations) nor will we have to explicitly specify the covariance structure (but will have to specific the random effects structure).
+```{r}
+NCGS = read.table("/Users/tsaiyunyu/Desktop/STATS_203/cholesterol-data.txt", na.strings=".")
+names(NCGS) = c("Trt", "ID", "M0", "M6", "M12", "M20", "M24")
+```
+a. Use lme to fit the linear mixed effects model, and include the output of the summary() of the model.
+```{r}
+NCGS.long = reshape(NCGS, varying=list(3:7), idvar="ID", timevar="Month", times=c(0,6,12,20,24), v.names="Chol", direction="long")
+
+mod.lme  = lme(Chol~Trt+I(Month)+I(Month^2), data=NCGS.long , random=~I(Month)+I(Month^2)|ID, na.action=na.omit, method="ML")
+summary(mod.lme)
+```
+b. using the model output above, test if Treatment main effect is significant (at a 5% significance level). Do not need to fit a new model, all the output you need is in the model from part a.
+**answer** the p-value of the Treatment's main effect is 0.8949. It is not significant. 
+c. Compute the random effects covariance matrix G in R, and show the output.
+```{r}
+getVarCov(mod.lme, type = "random.effects")
+```
+d. What is the estimated variance of the random intercepts? What is the estimated variance of the random slopes? What is the estimated correlation between the random intercepts and slopes?
+**answer** estimated variance of the random intercepts: 1670.5,  
+the estimated variance of the random slopes(I(Month)): 1.2283, 
+the estimated variance of the random slopes(I(Month^2)): 0.002462, 
+the estimated correlation between the random intercepts and slopes(I(Month)): -0.679, 
+the estimated correlation between the random intercepts and slopes(I(Month^2)): 0.425
+e. What are the random effects for the subject with ‘id‘ = 96? (i.e. find $b_{0,96}$, $b_{1,96}$, and $b_{2,96}$).
+**answer** subject with ‘id‘ = 96, random intercept is -48.0694,  random slope (I(Month)) is 0.6253363, and random slope (I(Month^2)) is -0.0229118.
+```{r}
+random.effects(mod.lme)[96,]
+```
+f. What is the estimated response for Month 6 (i.e. $2^{nd}$ occasion) for the subject with ID = 71? (i.e. find the fitted value $\hat Y_{71,2}$ of the lme model).
+**answer** 215.6939
+```{r}
+fitted(mod.lme)[names(fitted(mod.lme))=="71"]
+```
+g. Test (at a 5% significance level) if we should have random effects on the time covariates (Month and Month-squared terms).
+**answer** $H_O: b_{1i}=b_{2i}=0$, $H_O: b_{1i} \neq b_{2i} \neq 0$
+Due to the p-value=0.2253 and the value of AIC, we have evidence that $H_O$ is true and we should not have random effects on the time covariates.
+```{r}
+mod.lme.notime = lme(Chol~ Trt+ I(Month)+I(Month^2) , data=NCGS.long, random=~1|ID, na.action=na.omit, method="ML")
+
+anova(mod.lme.notime, mod.lme)
+```
+
