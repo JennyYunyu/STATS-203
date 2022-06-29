@@ -1,0 +1,93 @@
+---
+title: "Tsai_YunYu_HW2"
+output: word_document
+date: '2022-04-23'
+---
+```{r}
+library(nlme)
+```
+
+1.
+```{r}
+NCGS = read.table("/Users/tsaiyunyu/Desktop/STATS_203/cholesterol-data.txt", na.strings=".")
+NCGS = NCGS[complete.cases(NCGS), ]
+names(NCGS) = c("Trt", "ID", "M24", "M20", "M12", "M6", "M0")
+NCGS$Trt = factor(NCGS$Trt, levels=c(2,1), labels=c("Placebo","HighDose"))
+NCGS.long = reshape(NCGS, varying=list(3:7), idvar="ID", timevar="Month",
+times=c(0,6,12,20,24), v.names="Chol", direction="long")
+NCGS.long$Time = as.numeric(factor(NCGS.long$Month))
+```
+a.  Create a plot with serum cholesterol on the y-axis and month on the x-axis that includes points of the observed sample mean serum cholesterol for each group at each of the five observed months. Use different colors and point characters for each group. Comment on what happens to the mean cholesterol level as time moves on for the treatment group.
+**answer** the placebo group and high-dose group can raise the serum cholesterol.
+```{r}
+means = tapply(NCGS.long$Chol, list(NCGS.long$Month, NCGS.long$Trt), mean)
+times = c(0,6,12,20,24)
+plot(times, means[,1], type="l", xlab="Month", 
+	ylab="Mean Serum Cholesterol (mg/dL)",
+	ylim=c(220,280), main="Mean Serum Cholesterol Trajectories by Treatment",
+	col="blue", lty=1, pch=15)
+points(times, means[,2], type="l",
+	col="red", lty=2, pch=16)
+legend("topleft",c("Placebo","High-Dose"),
+	col=c("blue","red"), lty=c(1,2), pch=c(15,16))
+```
+b. Use gls to fit a mean model with treatment and month as a factor (indicators), along with an interaction using an unstructured correlation structure.Write the fitted model equation, defining any variables used.
+**answer** $Y_{ij}=236.64516-9.86738Trt_{ij}+6.67742I(Month=6)_{ij}+7.90323I(Month=12)_{ij}+25.25806I(Month=20)_{ij}+20.83871I(Month=24)_{ij}+16.15591TrtI(month=6)_{ij}+17.93011TrtI(month=12)_{ij}+1.10305TrtI(month=20)_{ij}+9.10573TrtI(month=24)_{ij}+\epsilon_i$ 
+```{r}
+mod.unst = gls(Chol ~ Trt+factor(Month)+Trt*factor(Month), data=NCGS.long, weight=varIdent(form = ~ 1 | Time),corr=corSymm(, form = ~ Time | ID))
+summary(mod.unst)
+```
+c. From the model in part b., what is the estimated correlation between time 1 and time 2? What about time 1 and time 5?
+**answer**correlation between time 1 and time 2 is 0.764, correlation between time 1 and time 5 is 0.606
+d. Using the gls function, fit a mean model with treatment and month as a factor, along with an interaction using an AR1 (autoregressive) correlation structure. Using the summary function, show the output of the model from R.
+```{r}
+mod.ar = gls(Chol ~ Trt+factor(Month)+Trt*factor(Month), data=NCGS.long,corr=corAR1(, form = ~ Time | ID))
+summary(mod.ar)
+```
+e. From the model in part d., what is the estimated correlation between time 1 and time 2? What about time 1 and time 5?.
+**answer** the estimated correlation between time 1 and time 2 is 0.7550983, and the estimated correlation between time 1 and time 5 is $0.7550983^4$= 0.3250978
+f. Compare the AIC’s from the models in part b. and part d. Which model (and thus correlation structure) would you go with based on AIC and why?
+**answer**  Based on AIC, the models in part b is better than the models in part d. because the AIC is a metric that is used to compare the fit of several regression models and the value smaller means the model fits better.
+g. Now conduct a formal likelihood ratio test of whether we should go with the AR(1) covariance structure or the unstructured covariance. Write out the null and alternative hypothesis, state the p-value and make a conclusion. Does your conclusion agree with what you concluded in part f.?
+**answer** $H_0:M_{red}$, $H_a:M_{full}$,p-value<0.05, We reject the null hypothesis and have evidence that we should go with the unstructured covariance. The AIC value for unstructured is smaller than the value for the structure. The result agree with the result in part f. the models in part b is better than the models in part d.
+```{r}
+anova(mod.ar, mod.unst)
+```
+h. Let us now treat the Month covariate as quantitative instead of a factor (indicators). Thus we will have tij = (0,6,12,20,24) will be in place of Month. Using an unstructured covariance matrix, fit a model with linear time trend that could differ for each treatment group and report the output.*
+**answer** $Y_{ij}=235.01569+2.55243Trt_{ij}+1.10902t_{ij}-0.23633Trt_{ij}t_{ij}+\epsilon_i$
+```{r}
+mod.unst.numeric = gls(Chol ~ Trt+Month+Trt*Month, data=NCGS.long, weight=varIdent(form = ~ 1 | Time),corr=corSymm(, form = ~ Time | ID), method="ML")
+summary(mod.unst.numeric)
+```
+i. Continuing with using Month/time as a quantitative covariate, expand the model in part h. to incorporate a quadratic time trend, $t^2_{ij}$ .
+**answer**$Y_{ij}=235.78493-6.18577Trt_{ij}+0.90435t_{ij}+2.08861Trt_{ij}t_{ij}+0.00857t^2_{ij}-0.09733Trt_{ij}t^2_{ij}+\epsilon_i$
+```{r}
+mod.unst.quad = gls(Chol ~ Trt+Month+Trt*Month+I(Month^2)+Trt*I(Month^2), data=NCGS.long, weight=varIdent(form = ~ 1 | Time),corr=corSymm(, form = ~ Time | ID), method="ML")
+summary(mod.unst.quad)
+```
+j. Compare the two models from part h. and i. (i.e. linear and quadratic), and indicate which model fits the data better using an appropriate likelihood ratio test.
+**answer**$H_0:M_{numeric}$, $H_a:M_{quad}$, p-value:0.0179, we reject the null hypothesis and have evidence that the model have quadratic is better. The AIC value for quadratic term is smaller than the value for the numeric term.
+```{r}
+anova(mod.unst.numeric, mod.unst.quad)
+```
+2.
+a. Write the mathematical expression for the marginal mean (population expectation) cholesterol level for a male subject on day 20.
+**answer**$Y_{ij}=\beta_0+20\beta_1+\beta2$
+b. Write the mathematical expression for the conditional mean (conditional expectation) cholesterol level for a male subject on day 20.
+**answer** $Y_{ij}=\beta_0+20\beta_1+\beta2+b_{0i}+b_{1i}t_{20i}$
+c. Write the mathematical expression for the difference in marginal mean (population expectation) cholesterol levels between a male subject on day 20 and a female subject on day 20.
+**answer** difference $Y_{ij}=\beta_2$
+d. Write the mathematical expression for the difference in conditional mean (conditional expectation) cholesterol levels for between day 10 and day 40 for a female subject.
+**answer** difference $Y_{ij}=30\beta_1+30b_{1i}$
+e. Identify and briefly explain (in context) each of the sources of random variation in this model for cholesterol (explain what the random intercept and random slope represents).
+**answer**  random intercept represents the added term to the intercept for i-th sampling unit and random slope represents the added effect of $t_{ij}$ for unit i
+3. 
+```{r}
+
+library(alr4)
+data(Rateprof)
+```
+a. What is the expression for $E(\bar{Y_i}|X)$ in this model?
+**answer**$E(\bar{Y_i}|X)=\beta_0+\beta_1\bar{X_{1i}}+\beta_2\bar{X_{2i}}$
+b. Why should we weight the variance of each instructors average rating,̄ $\bar{Y_i}$, but the number of raters $n_i$? (think of what the variance of  $\bar{Y_i}$ is)
+**answer** Using the weights option to allow for non-contanst variance at differrent times
