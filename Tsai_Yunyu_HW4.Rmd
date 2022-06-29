@@ -1,0 +1,196 @@
+---
+title: "Tsai_YunYu_HW4"
+output: word_document
+date: '2022-05-18'
+---
+1. The data consist of repeated progesterone metabolite (pregnanediol-3-glucuronide, PdG) measures from day -8 to day 15 in the menstrual cycle (day 0 denotes ovulation day) on a sample of 22 conceptive cycles from 22 women and 29 non-conceptive cycles from another 29 women.
+```{r}
+library(tidyverse)
+library(nlme)
+library(ggplot2)
+library(mgcv)
+library(readr)
+library(lme4)
+prog = read.csv("/Users/tsaiyunyu/Desktop/STATS_203/progesterone.csv", header = TRUE)
+```
+a. Create a spaghetti plot with ‘PDG‘ on the y-axis and ‘time‘ on the x-axis. Use different colors to distinguish conceptive group and non-conceptive group participants.
+```{r}
+prog %>%
+group_by(conceptive) %>%
+ggplot(aes(time, log_pdg, group = id, color = as.factor(conceptive))) +
+geom_point() +
+geom_line() +
+labs(x = "Day",
+y = "Distance dental growth (mm)")
+```
+b. Consider the following linear mixed effects model
+```{r}
+prog$group = as.factor(prog$conceptive)
+prog = prog %>%
+mutate(timeSqr = time^2, timeCub = time^3)
+model1 <- lme(log_pdg ~ time + conceptive : time + timeSqr + conceptive: timeSqr ,
+data = prog,
+random = ~ 1 + time + timeSqr| id,
+method = "REML")
+summary(model1)
+```
+c. Use R to find out the transformed residuals for all participants with each occasions, and plot the histgram of transformed residuals. Explain the reason that we have to use transformed residuals instead of general residuals, for example why we have to transform them first to do further model diagnostic.
+**answer** In longitudinal data, residuals may be correlated with the covariates & the components of the vector of residuals are correlated, so we need to transform residuals to have constant variance and zero correlation to check whether or not our mean model is appropriate or to assess the adequacy of the model assumptions about patterns of change in the mean response over time.
+```{r}
+res_population = residuals(model1, type = "response", level = 0)
+Sigma_i = extract.lme.cov(model1, prog)
+L_i = t(chol(Sigma_i)) #block matrix of lower triangular Cholesky factors
+res_transformed <- solve(L_i) %*% res_population
+tibble(r_star = res_transformed) %>%
+ggplot(aes(x = r_star)) +
+geom_histogram(aes(y = stat(density)), bins = 14, color = "black", fill = "gray") +
+geom_function(fun = dnorm, color = "blue") +
+labs(x = "Residuals", y = "Density")
+```
+d. Construct a scatterplot of the transformed residuals versus the transformed predicted values, summarize what you observed.
+**answer** In a correctly specified model, this scatterplot should display no systematic pattern, with a random scatter around a constant mean of zero. In this plot, we can see the random scatter around a constant mean of one. There is room for improvement in this model.
+```{r}
+mu_hat = fitted(model1, level = 0)
+mu_hat_transformed = solve(L_i) %*% mu_hat
+abs_res_transformed = abs(res_transformed)
+tibble(x = mu_hat_transformed, y = abs_res_transformed) %>%
+ggplot(aes(x = x, y = y)) +
+geom_hline(yintercept = 0.8, linetype = "dashed") +
+geom_point(shape = 1) +
+geom_smooth(method = "loess", se = FALSE) +
+labs(x = "Transformed Predicted Value", y = "Absolute Transformed Residual")
+```
+e. Construct a qq plot for the transformed residuals and summarize what you observed.
+```{r}
+tibble(r_star = res_transformed) %>%
+ggplot(aes(sample = r_star)) +
+geom_qq_line(color = "blue") +
+geom_qq(shape = 1) +
+labs(x = "Quantiles of Standard Normal", y = "Quantiles of Transformed Residuals")
+```
+f. Calculate Mahalanobis distance, how many potential outlying individuals do you observe?
+**answer** 9
+```{r}
+mahalanobis_distance <- function(x){
+x <- as.matrix(x)
+t(x) %*% x
+}
+mahalanobis_data <- tibble(id = prog$id, r_star = res_transformed) %>%
+group_by(id) %>%
+nest() %>%
+mutate(df = map_dbl(data, ~nrow(.x)))%>%
+mutate(d = map_dbl(data, ~mahalanobis_distance(.x)))%>%
+mutate(p_value = pchisq(d, df, lower.tail = FALSE))
+mahalanobis_data %>%
+arrange(p_value)
+sum(mahalanobis_data$p_value<0.05)
+```
+g. Plot Semi Variogram, summarize what you observed.
+**answer**In a correctly specified model for the covariance, the plot of the semi-variogram for the transformed residuals &the time elapsed between the corresponding observations should fluctuate randomly around a horizontal line centered at 1. There is a slight room for improvement in this model.
+```{r}
+Variogram(model1,
+data = prog,
+form = ~ 1 + time + timeSqr| id ,
+resType = "normalized") %>%
+as_tibble() %>%
+ggplot(aes(x = dist, y = variog)) +
+geom_hline(yintercept = 1, linetype = "dashed") +
+geom_point(shape = 1) +
+geom_smooth(method = "loess", se = FALSE, span = 0.1)
+```
+2. This study concerns treatment effect on toenail infections. Subjects were observed at week 0 (baseline) and weeks 4, 8, 12, 24, 36, and 48 (coded as Month in the dataset, will be treated as quantitative). At each visit, the binary response, Y, is if infection was present (0 for none/mild and 1 for moderate/severe).Treatment is coded to be 0 for existing treatment (Itraconazole) and 1 for the new treatment(Terbinafine).
+```{r}
+toes = read.table("/Users/tsaiyunyu/Desktop/STATS_203/toenail-data.txt", header=FALSE)
+names(toes) = c("ID","Y","Trt","Month","Visit")
+toes$Trt = factor(toes$Trt, levels=c(0,1), labels=c("Itra","Terb"))
+toes$ID = factor(toes$ID)
+```
+a. Create a plot of the estimated proportion of moderate/severe infection by treatment group across the different months. For both treatments, comment on the trend of proportions as month increases.
+**answer** As the months increased, both treatment groups have decreased the moderate or severe outcomes.
+```{r}
+toes$Month.cat = cut(toes$Month, breaks=quantile(toes$Month, seq(0,1,.2)), 
+    include.lowest=TRUE)
+prop.I = table(toes$Y[toes$Trt=="Itra"], 
+   toes$Month.cat[toes$Trt=="Itra"])[2,]/table(toes$Month.cat[toes$Trt=="Itra"])
+prop.T = table(toes$Y[toes$Trt=="Terb"], 
+   toes$Month.cat[toes$Trt=="Terb"])[2,]/table(toes$Month.cat[toes$Trt=="Terb"])
+plot( unlist( lapply(split(toes$Month[toes$Trt=="Itra"], 
+   toes$Month.cat[toes$Trt=="Itra"]), mean)), as.numeric(prop.I), type="o", 
+   pch=16, col="blue",xlab="Month", ylab="Moderate or Severe Outcome", 
+      main="Proportion Mod-Severe Outcomes by Treatment and Month", ylim=c(0,0.35))
+points( unlist( lapply(split(toes$Month[toes$Trt=="Terb"], 
+   toes$Month.cat[toes$Trt=="Terb"]), mean)), as.numeric(prop.T), type="o", 
+   pch=17, col="red")
+legend(10,.3,c("Itra","Terb"), col=c("blue","red"), pch=c(16,17))
+```
+b. Say a marginal model is fit using GEE (generalized estimating equations), with covariates being month and treatment along with an interaction term. Write out the model to be estimated using a logit link (log odds of moderate/severe infection).
+**answer**$g(E(Y_{ij}))=\beta_0+\beta_1M_{1ij}+\beta_2Tr_{2ij}+\beta_3M_{1ij}Tr_{2ij}$
+c. Fit the model from part b., and report the output. Assume an exchangeable correlation structure.
+**answer**$g(E(Y_{ij})=-0.58192-0.17128M_{1ij}+0.00718Tr_{2ij}-0.0773M_{1ij}Tr_{2ij}$
+```{r}
+library(geepack)
+
+mod1gee= geeglm(Y ~ 1+Month*Trt , family=binomial, id=ID, corstr="exchangeable", data=toes)
+
+summary(mod1gee)
+```
+d. Interpret the effect of a unit increase in Month (consider both treatment groups).
+**answer**$e^{-0.17128-0.07773}$=0.7796, as 1 unit increase in Month, 22.04% lower moderate or severe outcomes for those taking Terbinafine than those taking Itraconazole.
+e. Conduct a Wald test of whether or not Month should be in the model from part b. This includes the main effect of Month and the interaction term.
+**answer** $H_0$: Lβ = 0 vs.$H_a$: Lβ ≠ 0 
+p-value<0.05. We reject the $H_0$ and have evidence that Month should be in the model from part b.
+```{r}
+mod3gee = geeglm(Y ~ 1+Trt , family=binomial, id=ID, corstr="exchangeable", data=toes)
+summary(mod3gee)
+anova(mod1gee, mod3gee)
+```
+f. Why can’t you use AIC or the likelihood ratio test to conduct the test in part e.?
+**answer** In the GEE, there are no distributional assumptions in marginal models, so there are no maximum likelihood estimates and AIC
+g. Now write out a random effects model for the log odds model in part b. Consider the case of a random intercept only. Write out this generalized linear mixed effect model with covariates reatment and Month along with an interaction and a random intercept.
+**answer**$log(E(Y_{ij}|b_i))=(-1.45762+b_{0i})-0.3821M_{1ij}-0.12982Tr_{2ij}-0.13364M_{1ij}Tr_{2ij}$
+h. Fit the model from part e. in R and report the output.
+```{r}
+mod = glmer(Y ~ 1+Month*Trt  + (1 | ID), family=binomial, data=toes, nAGQ =  5) 
+summary(mod)
+```
+i. Explain how you can use AIC to conduct the test of whether or not to include Month in the model (main effect and interaction).
+**answer** AIC=2p-2log(L), where p is the number of parameters in the model. Thus, the lower the AIC, the higher the log likelihood is while penalizing for the number of parameters being estimated
+j. For the average or typical subject in the dataset, interpret the estimated effect of a unit increase in Month on the odds of moderate/severe infection.
+**answer**For the average or typical subject in the dataset, $e^{-0.3821-0.1336}$=0.5970, as 1 unit increase in Month, 40.29% lower moderate or severe outcomes for those taking Terbinafine than those taking Itraconazole.
+k. Write out the estimated mixed effect model for subject ID=1.
+**answer**$log(E(Y_{1j}|b_1))=2.017-0.382X_{11j}-0.13X_{21j}-0.134X_{11j}X_{21j}$
+```{r}
+coef(mod)$ID[1:5,]
+```
+l. What question is the model in part b. addressing as compared to the model in part g.?
+**answer** the model in part b is marginal model, which cannot ensure the individual effects, and the model in part g is conditional model, which can ensure the individual effects.
+3.This study concerns treatment effect on preventing non-melanoma skin cancer. The outcome variable Y is the count of new skin cancers per year. Treatment is coded 1 = treatment (beta carotene), 0 = placebo. The variable Year denotes the year of follow-up.
+```{r}
+skin = read.csv("/Users/tsaiyunyu/Desktop/STATS_203/skin.csv")
+```
+a. Say a marginal model is fit using GEE, with covariates being year and treatment along with an interaction term. Write out the theoretical model to be estimated using a log link function.
+**answer** $g(E(X_{ij}))=\beta_0+\beta_1Year_{1ij}+\beta_2Tr_{2ij}+\beta_3Year_{1ij}Tr_{2ij}+log(T_{ij})$
+b. Why did we not include the offset term in the model in part b?
+**answer**each observation has the same exposure period, offset term has no effect.
+c. Assume an AR (1) correlation structure. Fit the model from part b., and report the output.
+```{r}
+gee_2 = geeglm(count ~ year + treatment + year*treatment, data = skin,family = poisson(link = "log"),id = id,  corstr = "ar1")
+summary(gee_2)  
+```
+d. What is the interpretation of the coefficient of Treatment?
+**answer**$e^{-0.0657}$=0.94, 6.4% reduction estimated baseline new skin cancer rate for those taking beta carotene compared to those taking a placebo. 
+e. What is the interpretation of the coefficient of Year?
+**answer**$e^{0.0212}$=1.02,  the subject taking the placebo had 2% higher new skin cancer rate than the previous 1 year they measured. 
+f. What is the interpretation of the coefficient of the interaction term?
+**answer**$e^{-0.0327}$=0.9678, the estimated effect of beta carotene is a 3.2% reduction in the pre-/post-intervention in the new skin cancers rate ratio compared to the placebo group 
+g. Now consider a random effects model for the log model in part b, include a random intercept and a random slope. Write out this generalized linear mixed effect model.
+**answer**$g(E(X_{ij}))=(\beta_0+b_{0i})+(\beta_1+b_{0i})Year_{1ij}+\beta_2Tr_{2ij}+\beta_3Year_{1ij}Tr_{2ij}+log(T_{ij}$
+h. Fit the model from part g. in R and report the output.
+```{r}
+glmm_3 = glmer(count ~ treatment*year + (year | id), offset=log(year),family=poisson, data=skin)
+summary(glmm_3)  
+```
+i. Interpret the estimated coefficient of Treatment in part h.
+**answer**$e^{-0.1081}$=0.8975, 10.3% reduction estimated baseline new skin cancer rate for a "typical" subject on beta carotene compared to a "typical" subject on placebo with the same values of random effects. 
+j. Interpret the coefficient of the estimated interaction term in part h.
+**answer**$e^{-0.0222}$=0.978, the estimated effect of beta carotene for a “typical” subject is a 2.19% reduction in the pre-/post-intervention skin cancer rate ratio compared to a “typical” subject taking a placebo. 
