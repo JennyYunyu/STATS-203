@@ -1,0 +1,154 @@
+---
+title: "Tsai_YunYu_Final"
+output:
+  word_document: default
+  pdf_document: default
+date: '2022-06-03'
+---
+```{r}
+library(nlme)
+
+BoneWide = read.csv("/Users/tsaiyunyu/Desktop/STATS_203/BoneWide.csv")
+BoneLong = read.csv("/Users/tsaiyunyu/Desktop/STATS_203/BoneLong.csv")
+
+BoneWide$Trt = as.factor(BoneWide$Trt)
+BoneLong$Trt = as.factor(BoneLong$Trt)
+
+BoneWide$Trt = relevel(BoneWide$Trt, ref="P")
+BoneLong$Trt = relevel(BoneLong$Trt, ref="P")
+```
+1. **answer** The number of repeated measurements=1, indicates there are 7 new cases lost to follow up on for the first time. The number of repeated measurements=2 indicates that 6 new cases have been lost for the second time, for a total of 13 cases lost. The number of repeated measures =3, indicating that 5 new cases have been lost for the third time, for a total of 18 cases lost. The number of repeated measurements=4 indicates that 3 new cases have been lost for the fourth time, for a total of 21 cases lost. There are only four follow-up measurements. As a result, the number of repeated measurements=5 indicates that there are 91 cases left.
+```{r}
+ID.comp = BoneWide$ID[complete.cases(BoneWide)]
+BoneWide.comp = BoneWide[BoneWide$ID %in% ID.comp,]
+
+BoneLong.comp = BoneLong[BoneLong$ID %in% ID.comp,]
+BoneWide[!complete.cases(BoneWide),]
+
+na.count = function(x){ return( sum(is.na(x)) ) }
+NumberOfObservations = 5-apply(BoneWide, 1, na.count)/2
+table(NumberOfObservations)
+
+```
+
+2. **answer** Missing completely at random (MCAR) and Missing at random (MAR) would not cause any issues with inference. The response is independent of all values of the response, including the unobserved values, according to this missing data method. MCAR can be used to depict a valid conclusion while examining the effect of calcium supplementation on bone mineral density in young children.
+However, the not missing at random (NMAR) would cause issues for the analysis. The probability that responses are missing is related to the specific values of the response that should have been obtained. If the using NMAR to make the conclusion, the non-ignorable important information may be missed.
+
+3. **answer** There are 57 individuals in the control group (Placebo) and 55 individuals in the treatment group (Calcium).
+There are 65 individuals in the normal BMI group, 31 individuals in the over BMI group, and 16 individuals in the under BMI group.
+```{r}
+table(BoneWide$Trt)
+table(BoneWide$BMICat)
+```
+
+4. **answer** The missingness pattern along the visits is similar for the Placebo and Calcium groups. The treatment group and control group lost the similar number of individuals in each follow-up.
+```{r}
+tapply(BoneLong$Age, list(BoneLong$Trt,BoneLong$Visit), mean, na.rm=TRUE)
+tapply(BoneLong$Age, list(BoneLong$Trt,BoneLong$Visit), sd, na.rm=TRUE)
+
+tapply(BoneLong$BMD, list(BoneLong$Trt,BoneLong$Visit), mean, na.rm=TRUE)
+tapply(BoneLong$BMD, list(BoneLong$Trt,BoneLong$Visit), sd, na.rm=TRUE)
+
+tapply(BoneLong$BMD, list(BoneLong$Trt,BoneLong$Visit), na.count)
+```
+
+5. **answer** The pattern is quite similar between the placebo group and the calcium group. The calcium group has an overall slightly higher BMD than the placebo group during each visit.
+```{r}
+means = tapply(BoneLong$BMD, list(BoneLong$Trt,BoneLong$Visit), mean, na.rm=TRUE)
+plot(c(1:5),means[1,],type="o",xlab="Visit Number", ylab="Mean Bone Mineral Density", ylim=c(0.8,1), main="Mean BMD by Visit and Treatment")
+lines(c(1:5),means[2,],type="o",xlab="Visit Number", ylab="Mean Bone Mineral Density", lty=2,pch=2)
+legend("bottomright",c("Placebo","Calcium"),lty=c(1,2),pch=c(1,2))
+```
+
+
+6. 
+```{r}
+plot(BMD ~ Age, data=BoneLong, pch=as.numeric(BoneLong$Trt), col=as.numeric(BoneLong$Trt)+1, main="BMD versus Age by Treatment",ylim=c(0.6,1.2))
+lines(lowess(BoneLong.comp$Age[BoneLong.comp$Trt=="P"], BoneLong.comp$BMD[BoneLong.comp$Trt=="P"]),col=2)
+lines(lowess(BoneLong.comp$Age[BoneLong.comp$Trt=="C"], BoneLong.comp$BMD[BoneLong.comp$Trt=="C"]),col=3, lty=2)
+legend("bottomright", c("Placebo","Calcium"), lty=c(1,2), col=c(2,3), pch=c(1,2))
+```
+
+7. **answer** From the plot and results from parts 4 to 6, the bone mineral density will increase with age. Even if there is variability in bone mineral density among each individual, the calcium group has an overall high bone mineral density than the placebo group.
+
+8. **answer** The chart of "BMD versus BMI Category" indicates that those over BMI have the highest bone mineral density and followed by those with a BMI of normal, and finally those under BMI. The chart of "Mosaic Plot of Treatment by BMI Category" indicates that the graph shows that the calcium group has more people with a normal or high BMI than the placebo group, while the calcium group has fewer people with a low BMI than the placebo group. 
+```{r}
+plot(BMD ~ relevel(as.factor(BMICat),ref="Under"), data=BoneLong, main="BMD versus BMI Category",col="lightblue",xlab="BMI Category",ylab="Bone Mineral Density")
+tapply(BoneLong$BMD, BoneLong$BMICat, median, na.rm=TRUE)
+
+mosaicplot( ~ factor(Trt, levels=c("P","C"), labels=c("Placebo","Calcium")) + relevel(as.factor(BMICat),ref="Under"), data=BoneWide, xlab="Treatment",ylab="BMI Category Proportions", main="Mosaic Plot of Treatment by BMI Category", las=1, col=c("red","blue","green"))
+```
+
+9.
+(a) **answer** In compound symmetric covariance structure, the correlation of BMD across each number of visits is the same. However, in AR1 covariance structure, the correlation of BMD across the visits declines over the number of visits.
+```{r}
+library(nlme)
+
+mod1 = gls(BMD ~ Trt+I(Visit-1)+Trt*I(Visit-1), correlation=corCompSymm(, form=~Visit | ID), method="REML", data=BoneLong.comp)
+summary(mod1)
+```
+```{r}
+mod1.1 = gls(BMD ~ Trt+I(Visit-1)+Trt*I(Visit-1), correlation=corAR1(, form=~Visit | ID), method="REML", data=BoneLong.comp)
+summary(mod1.1)
+```
+
+(b) **answer** $Y_{ij}= 0.8699447+0.0123462Trt_i+0.0226894I(V_{ij})+0.0043243Trt_i*I(V_{ij})$
+$Y_{ij}$: bone mineral density of the i-th individual on the j-th visit
+$Trt_i$: individual assigned to which group, $Trt_i$ = 1 if i-th individual assigned to Calcium, 0 if i-th individual assigned to placebo
+$V_{ij}$: j-1, is visit number minus one of the i-th individual on the j-th visit (1, 2, 3, 4, 5)
+```{r}
+mod1.ML = gls(BMD ~ Trt+I(Visit-1)+Trt*I(Visit-1), correlation=corCompSymm(, form=~Visit | ID), method="ML", data=BoneLong.comp)
+summary(mod1.ML)
+```
+(c) **answer** 0.8699447: the estimated BMD for the individual in the placebo group at the baseline is 0.8699447.
+0.0123462: When people at the calcium group and not influenced by the visit time, the BMD will increase 0.0123462.
+0.0226894: When the number of visit increase by 1 unit and not influenced by the treatment status, the BMD will increase 0.0226894.
+0.0043243: The interaction term 0.0043243 means that the BMD for an individual in the treatment group is estimated to increase by (0.0226894+0.0043243) for each unit increase in.
+(d) **answer** difference at first time: 0.0123462
+difference at last time: 0.0123462+4*0.0043243 = 0.0296434
+(e) **answer** $H_0: \beta_3=0$, $H_a: \beta_3\neq0$
+The p-value is <.0001, so we reject the null hypothesis and have evidence that the $\beta_3\neq0$, so the change in mean bone mineral density across visits differs between the two treatments. The treatment affects of the visit on BMD.
+```{r}
+mod0.ML = gls(BMD ~ Trt+I(Visit-1), correlation=corCompSymm(, form=~Visit | ID), method="ML", data=BoneLong.comp)
+
+anova(mod0.ML, mod1.ML)
+``` 
+(f)
+```{r}
+getVarCov(mod1)
+```
+(g) **answer** $H_O:mod1$, $H_a: mod2$. The p-value is <.05, so we reject the null hypothesis and have evidence that we can not use constant variance across visit.That is to say,  there is a non-constant variance across visits.
+```{r}
+mod2 = gls(BMD ~ Trt+I(Visit-1)+Trt*I(Visit-1), correlation=corCompSymm(, form=~Visit | ID), method="REML", weights=varIdent(form = ~1|Visit), data=BoneLong.comp)
+
+anova(mod1, mod2)
+```
+
+10.
+(a) **answer** $Y_{ij}=\beta_0+\beta_1Trt_{ij}+\beta_2a_{ij}+\beta_3Trt_{ij}*a_{ij}+b_{0i}+\epsilon_{ij}$ where $\epsilon_{ij}\sim N(0, \sigma^2)$ and $b_{0i}\sim N(0, \sigma^2_0)$
+(b)
+```{r}
+mod3 = lme(BMD ~ Trt+Age+Trt*Age, random = ~ 1|ID, data=BoneLong, na.action=na.omit, method="ML")
+summary(mod3)
+```
+(c) **answer** the estimated standard deviation of the random intercept is 0.06653545. This implies the intercept are variety quite a bit given that $\beta_0$=0.3631525. Two standard deviations from 0.3631525 means intercepts are from 0.23 to 0.496.
+(d) **answer** $H_0: M_{red}$, $H_a:M_{full}$. The p-value <0.0001 and AIC shows that random slope on Age should be added to the model.
+```{r}
+mod3.REML = lme(BMD ~ Trt+Age+Trt*Age, random = ~ 1|ID, data=BoneLong, na.action=na.omit, method="REML")
+
+mod3s.REML = lme(BMD ~ Trt+Age+Trt*Age, random = ~ 1+Age|ID, data=BoneLong, na.action=na.omit, method="REML")
+
+anova(mod3.REML, mod3s.REML)
+```
+(e) **answer** $H_0: L\beta=0$, $H_a: L\beta≠0$. The p-value<0.0001 and AIC indicates that we should adjust for BMI category in our analysis (fixed effect).
+```{r}
+mod4.0 = lme(BMD ~ Trt+Age+Trt*Age + BMICat, random = ~ 1 + Age|ID, data=BoneLong, na.action=na.omit, method="ML")
+summary(mod4.0)
+mod4.1 = lme(BMD ~ Trt+Age+Trt*Age, random = ~ 1 + Age|ID, data=BoneLong, na.action=na.omit, method="ML")
+
+anova(mod4.0, mod4.1)
+```
+(f) **answer** In order to have a constant variance and zero correlation, we need to transform/normalize the residuals.
+
+11. **answer** The limitation of the study design used previously is the data is collected from the same local school districts in a primarily white middle-class neighborhood, so the result cannot represent the whole population. We can gather more data from various locations, races, and income levels and then use randomized block design to diminish the other factors that can potentially influence the result.
+12. **answer** The mod4.0: $Y_{ij}=\beta_0+\beta_1Trt_i+\beta_2a_{ij}+\beta_3Trt_i*a_{ij}+\beta_4BO_i+\beta_5BU_i+b_{0i}+b_{1i}a_{ij}$ is the best part in part 10. In addition to calcium supplementation, age and BMI also influence on bone mineral density among adolescent girls. As age increases, adolescent girls who take the calcium will experience more BMD levels than those who do not take the calcium.
