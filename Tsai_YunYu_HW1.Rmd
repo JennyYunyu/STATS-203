@@ -1,0 +1,141 @@
+---
+title: "Tsai_YunYu_HW1"
+output:
+  word_document: default
+  html_document:
+    df_print: paged
+date: '2022-04-08'
+---
+1. 
+```{r}
+epilepsy = read.table("/Users/tsaiyunyu/Desktop/STATS_203/epilepsy.txt", header=TRUE)
+epilepsy[,4] = epilepsy[,4]/8
+epilepsy[,c(5:8)] = epilepsy[,c(5:8)]/2
+epi.long = reshape(epilepsy, idvar="ID", varying=list(4:8),v.names="Rate", timevar="Time", times=c(0,2,4,6,8),direction="long")
+```
+
+a. Calculate the mean rate of seizures for each group and time combination.
+```{r}
+tapply(epi.long$Rate, list(epi.long$Time,epi.long$trt), mean)
+```
+b. In R, produce a time plot of mean rate of seizures for the two treatment groups across all times. Show this plot (will have two lines, one for the placebo group and one for treatment).
+```{r}
+means = tapply(epi.long$Rate,list(epi.long$Time,epi.long$trt),mean)
+
+matplot(c(0,2,4,6,8),means,col=c(1,1),lty=c(3,1),type="o",pch=c(1,16),xlab="Time (weeks)",ylab="Mean rate of seizures (per week)",ylim=c(2.5,5.0),main="Figure 1.2: Mean Rate of Seizures by Treatment Group")
+
+legend(3.5,3.0, c("Placebo","Progabide"), lty=c(3,1))
+```
+c. Produce a panel plot (one plot for each individual) of the rate of seizures versus time for all individuals in the Progabide group. Comment on any time trends you see across the individual plots.
+**answer** Most of people in the Progabide group will reduce the rates of epilepsy episodes at week 8.
+```{r}
+library(lattice)
+
+Prog = epi.long[epi.long$trt=="Progabide",]
+xyplot(Rate ~ Time | factor(ID), data=Prog, type="o",main="Response Trajectories in Progabide Group",xlab="Time (weeks)", ylab="Rate of Seizures (per week)")
+```
+d. Do the same from part c. for all individuals in the Placebo group.
+**answer** Compared to the Progabide group, the participants in placebo groups did not significantly lower the rates of epilepsy episodes.
+```{r}
+Plac = epi.long[epi.long$trt=="Placebo",]
+xyplot(Rate ~ Time | factor(ID), data=Plac, type="o",main="Response Trajectories in Placebo Group",xlab="Time (weeks)", ylab="Rate of Seizures (per week)")
+```
+e. Calculate the sample covariance matrix for the Placebo group. Do the same for the Progabide group. Describe what you see in terms of the variances of each week. 
+**answer** In both groups, the week closer, the covariance higher, while the week farther, the covariance lower.
+```{r}
+cov(epilepsy[epilepsy$trt=="Placebo",4:8])
+
+cov(epilepsy[epilepsy$trt=="Progabide",4:8])
+```
+f. For the Progabide group only, conduct a paired t-test of the null hypothesis that the mean change in rate of seizures from the baseline to the last week of the study is equal to zero versus the alternative hypothesis that the mean change is not equal to zero.
+Write the null and alternative hypothesis, state test statistic and p-value, and make a conclusion of the test in context of the problem.
+**answer**$H_0:\mu=0$, $H_a:\mu \neq 0$
+t-value=1.054, p-value=0.3003. we fail to reject the $H_0:\mu=0$ and do not have evidence that $H_a:\mu \neq 0$ is true. Progabide cannot significantly reduce the rates of epilepsy episodes.
+```{r}
+Pro.W0 = epilepsy$Week0[epilepsy$trt=="Progabide"]
+Pro.W8 = epilepsy$Week8[epilepsy$trt=="Progabide"]
+t.test(Pro.W0, Pro.W8, paired=T, alternative="two.sided")
+```
+g. Conduct a two-sample t-test of the null hypothesis that the mean change in rate of seizures from the baseline to the last week of the study is the same in both groups (placebo and Progabide) versus the alternative hypothesis that the mean change differs between the two groups. Write the null and alternative hypothesis, state test statistic and p-value, and make a conclusion of the test in context of the problem.
+**answer**$H_0:\mu_{placebo}=\mu_{Progabide}$, $H_a:\mu_{placebo} \neq \mu_{Progabide}$
+t-value=-1.0656, p-value = 0.2913, we fail to reject $H_0:\mu_{placebo}=\mu_{Progabide}$ and do not have evidence that $H_a:\mu_{placebo} \neq \mu_{Progabide}$ is true. Progabide has not a different effect on the rates of epilepsy episodes than placebo.
+```{r}
+Diffs = epilepsy$Week8 - epilepsy$Week0
+Pro.D = Diffs[epilepsy$trt=="Placebo"]
+Pla.D = Diffs[epilepsy$trt=="Progabide"]
+t.test(Pla.D, Pro.D, mu=0, alternative="two.sided")
+```
+
+2. The data comes from the a exercise therapy trial, which is a study of exercise therapies, where 37 patients were assigned to one of two weightlifting programs. This is a randomized experiment with two treatment groups. In the first program/treatment (repetitions_increase), the number of repetitions was increased as subjects became stronger. This group has 16 subjects. In the second program/treatment (weights_increase), the number of repetitions was fixed but the amount of weight was increased as subjects became stronger. This group has 21 subjects. Measures of muscle strength were taken at baseline (day 0), and on days 4, 6, 8, and 12.
+a.Use the summary function to get the summary of the dataset, and comment on the results.
+**answer** muscle strength is slightly increasing.
+```{r}
+library(tidyverse)
+exercise <- read.csv("/Users/tsaiyunyu/Desktop/STATS_203/exercise.csv")
+summary(exercise)
+```
+b. Run the following code, include the output, and explain the results. Explain why we are excluding the id.
+**answer** Overall, both groups present the positive linear regression. The mean of muscle strength is higher in the weight_increase program than the repetitions_increase program among measure on days 4, 6, 8, and 12.
+ID is not the variable that we need to measure and avoid interfering with the results, so we exclude the ID.
+```{r}
+library(GGally)
+ggpairs(select(exercise, -id),aes(color = program))
+```
+c. Run the following code that will produce boxplots of muscle strength on week 0 for each program (weight and repetition). Interpret the boxplots.
+**answer** the weight_increase program has higher the first quartile, mean, and the third quartile for muscle strength than the repetitions_increase program.
+```{r}
+exercise %>%
+ggplot(aes(x = program, y = week_0)) + geom_boxplot()
+```
+d. Convert the dataset from the "wide" format to the "long" format by creating new columns called day and muscle_strength , and call the new dataset long_exercise. Show the output of the glimpse(long_exercise).
+```{r}
+library(dplyr)
+library(tidyr)
+
+long_exercise <- exercise %>%
+pivot_longer(cols = starts_with("week"),
+names_to = "week",
+values_to = "muscle_strength")
+glimpse(long_exercise)
+```
+
+e. Run the following code that will produce weekly boxplots of each group’s muscle strength recordings. What do you see with the repetitions_increase groups muscle strength observations across the weeks?
+**answer** the repetitions for the exercise cannot increase the muscle strength because the mean of the muscle strength in the repetitions_increase group across the weeks fluctuates greatly.
+```{r}
+library(ggplot2) 
+
+long_exercise %>%
+  ggplot(aes(x = program, y = muscle_strength)) + geom_boxplot() + facet_wrap(~week , ncol = 5)
+```
+f. Calculate the sample means and standard deviations of the muscle strength at each occasion per program (i.e. repetition_increase and weight_increase groups). How does your answer from interpreting the boxplots in part e. relate to the output from this question part ?
+**answer** Similar to the results from part e, the repetitions for the exercise also can increase the muscle strength due to excluding the missing values, even if there are fluctuates in both groups.
+```{r}
+na.omit(long_exercise) %>%
+  group_by(program, week) %>%
+  summarize(mean_muscle_strength = mean(muscle_strength, na.rm = TRUE),
+  sd_muscle_strength = sd(muscle_strength, na.rm = TRUE))
+```
+g. Construct a time plot with line segments of the muscle strength versus time (in days) for each individual (spaghetti plot). Describe the general characteristics of the time trend.
+**answer**  In general, individuals from both groups (repetitions_increase program & weights_increase program) can slightly increase their muscle strengths.
+```{r}
+library(stringr)
+
+long_exercise <- long_exercise %>%
+mutate(week_numeric = str_sub(week, 5, 6),
+week_numeric = as.numeric(as.factor(week_numeric))) %>%
+relocate(week_numeric, .after = week)
+long_exercise %>%
+ggplot(aes(x = week_numeric, y = muscle_strength,
+group = id, color = factor(id))) + geom_point(show.legend = FALSE) +
+geom_line(show.legend = FALSE) + labs(x = "Week", y = "Muscle Strength")
+```
+h. Construct a time plot with line segments of the mean muscle strength versus time (in days) for each program (i.e. repetition_increase and weights_increase groups). Describe the general characteristics of the time trend.
+**answer**In general, individuals from both groups (repetitions_increase program & weights_increase program) can slightly increase their muscle strengths, but the effect from weights_increase program is better than repetitions_increase program
+```{r}
+long_exercise %>%
+group_by(week_numeric, program) %>%
+summarize(mean_muscle_strength = mean(muscle_strength, na.rm = TRUE)) %>%
+ggplot(aes(x = week_numeric, y = mean_muscle_strength, color = program)) + geom_point() + geom_line() +
+labs(x = "Week", y = "Mean Muscle Strength")
+```
+
